@@ -1,0 +1,80 @@
+{
+  "name": "marketing-rag-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first RAG over a curated content library (Electron + React + FastAPI).",
+  "author": "Agentic Studio Labs",
+  "type": "module",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tailwindcss/typography": "^0.5.19",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^3.0.0",
+    "jsdom": "^25.0.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0"
+  },
+  "build": {
+    "appId": "com.agenticstudiolabs.marketing-rag-assistant",
+    "productName": "Marketing RAG Assistant",
+    "copyright": "Copyright © Agentic Studio Labs",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "!**/*",
+      "out/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "sidecar",
+        "to": "sidecar",
+        "filter": [
+          "**/*",
+          "!.venv/**",
+          "!**/__pycache__/**",
+          "!**/*.pyc",
+          "!**/.pytest_cache/**",
+          "!**/.ruff_cache/**",
+          "!**/*.db",
+          "!tests/**"
+        ]
+      }
+    ],
+    "publish": null,
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "npmRebuild": false
+  }
+}
