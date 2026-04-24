@@ -31,7 +31,7 @@ The desktop app talks to the API over HTTPS; build-time **`VITE_*`** and Electro
 
 **Still rough or incomplete**
 
-- **Local** dashboard search calls sidecar **`/api/agents/query`** (`api.discover`); **cloud** mode uses **`/api/content/search`**.
+- Dashboard **discover** uses **`POST /api/agents/query`** (`api.discover`) against the **sidecar** (local) or **cloud API** (Postgres + Anthropic). Requires **`CIH_CLOUD_ANTHROPIC_API_KEY`** (or sidecar key) for NL answers.
 - Watched-folder background watching is not fully wired to app startup.
 - Local settings reload from SQLite on startup is incomplete for some paths.
 - Hardening (e.g. private connectivity for Cloud SQL in non-dev) is ongoing.

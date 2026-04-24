@@ -73,7 +73,7 @@ export interface DiscoverResponse {
   query: string;
   answer: string;
   results: ContentItem[];
-  filters_applied: Record<string, string>;
+  filters_applied: Record<string, string | number | boolean>;
   search_terms: string;
 }
 

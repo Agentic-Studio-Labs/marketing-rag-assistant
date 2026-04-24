@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = ""
     anthropic_secret_ref: str = "anthropic_primary"
+    llm_model: str = "claude-sonnet-4-6"
     artifact_bucket: str = ""
     queue_mode: str = "inline"
     gcp_project_id: str = ""

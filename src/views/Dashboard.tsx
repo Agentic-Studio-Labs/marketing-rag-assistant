@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
-import { API_MODE } from "../api/runtime";
 import type { ContentItem, ContentStats } from "../api/types";
 
 type DiscoverMeta = {
   answer: string;
-  filtersApplied: Record<string, string>;
+  filtersApplied: Record<string, string | number | boolean>;
 };
 
 export default function Dashboard() {
@@ -37,18 +36,12 @@ export default function Dashboard() {
     }
     setLoading(true);
     try {
-      if (API_MODE === "local") {
-        const res = await api.discover(query);
-        setDiscoverMeta({
-          answer: res.answer,
-          filtersApplied: res.filters_applied,
-        });
-        setSearchResults(res.results);
-      } else {
-        setDiscoverMeta(null);
-        const res = await api.searchContent(query);
-        setSearchResults(res.items);
-      }
+      const res = await api.discover(query);
+      setDiscoverMeta({
+        answer: res.answer,
+        filtersApplied: res.filters_applied,
+      });
+      setSearchResults(res.results);
     } catch (err) {
       console.error(err);
     } finally {
@@ -74,11 +67,7 @@ export default function Dashboard() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={
-            API_MODE === "local"
-              ? "Ask in natural language… (e.g. “case studies for CFOs about cost savings”)"
-              : "Search content… (e.g. cloud migration for CTOs)"
-          }
+          placeholder="Ask in natural language… (e.g. “case studies for CFOs about cost savings”)"
           className="flex-1 rounded-lg border border-border bg-background px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
         />
         <button
@@ -130,7 +119,7 @@ export default function Dashboard() {
       <div>
         <h2 className="text-lg font-medium mb-3">
           {searchResults
-            ? `${API_MODE === "local" && discoverMeta ? "Suggested content" : "Search results"} (${searchResults.length})`
+            ? `Suggested content (${searchResults.length})`
             : "Recent Content"}
         </h2>
         {displayItems.length === 0 ? (

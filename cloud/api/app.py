@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import (
+    agents,
     auth,
     content,
     generated,
@@ -38,6 +39,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(me.router)
+app.include_router(agents.router)
 app.include_router(content.router)
 app.include_router(generated.router)
 app.include_router(jobs.router)

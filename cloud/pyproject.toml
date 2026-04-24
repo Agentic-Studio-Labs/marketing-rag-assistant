@@ -24,3 +24,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 include = ["api*", "shared*", "workers*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
