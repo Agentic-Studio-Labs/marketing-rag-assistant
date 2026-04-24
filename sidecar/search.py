@@ -68,9 +68,12 @@ def hybrid_search(
     vector_scores: dict[str, float] = {}
     vector_items: dict[str, dict] = {}
     try:
+        vss_count = conn.execute("SELECT COUNT(*) FROM vss_content").fetchone()[0]
+        if vss_count == 0:
+            raise ValueError("empty vss index")
         vss_rows = conn.execute(
             "SELECT rowid, distance FROM vss_content WHERE vss_search(embedding, vss_search_params(?, ?))",
-            [json.dumps(query_embedding), fetch_k],
+            [json.dumps(query_embedding), min(fetch_k, vss_count)],
         ).fetchall()
         if vss_rows:
             for vr in vss_rows:
@@ -127,11 +130,14 @@ def get_similar_content(
         return []
     source_rowid = source["rowid"]
     try:
+        vss_count = conn.execute("SELECT COUNT(*) FROM vss_content").fetchone()[0]
+        if vss_count < 2:
+            return []
         vss_rows = conn.execute(
             "SELECT rowid, distance FROM vss_content WHERE vss_search("
             "embedding, vss_search_params("
             "(SELECT embedding FROM vss_content WHERE rowid = ?), ?))",
-            [source_rowid, limit + 1],
+            [source_rowid, min(limit + 1, vss_count)],
         ).fetchall()
     except Exception:
         return []

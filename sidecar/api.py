@@ -41,7 +41,9 @@ def _get_conn() -> sqlite3.Connection:
 def _init_vss(conn: sqlite3.Connection) -> None:
     try:
         import sqlite_vss
+        conn.enable_load_extension(True)
         sqlite_vss.load(conn)
+        conn.enable_load_extension(False)
         conn.execute(
             f"CREATE VIRTUAL TABLE IF NOT EXISTS vss_content USING vss0(embedding({settings.embedding_dimensions}))"
         )
