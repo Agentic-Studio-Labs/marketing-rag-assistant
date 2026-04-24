@@ -1,5 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
+
+function readTokenFromHash(): string | null {
+  const raw = window.location.hash.replace(/^#/, "");
+  const qi = raw.indexOf("?");
+  if (qi === -1) return null;
+  const qs = new URLSearchParams(raw.slice(qi + 1));
+  return qs.get("token") ?? qs.get("magic_token");
+}
 
 export default function Login() {
   const {
@@ -13,6 +21,11 @@ export default function Login() {
   const [token, setToken] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const t = readTokenFromHash();
+    if (t) setToken(t);
+  }, []);
 
   async function handleRequest(e: React.FormEvent) {
     e.preventDefault();
@@ -86,7 +99,7 @@ export default function Login() {
               value={token}
               onChange={(e) => setToken(e.target.value)}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm min-h-28"
-              placeholder="Paste the token from the magic link email."
+              placeholder="Paste the signed token (from email, dev console, or a cih:// / app deep link)."
             />
           </div>
           <button

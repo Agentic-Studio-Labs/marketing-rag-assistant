@@ -1,28 +1,47 @@
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, field_validator
 
-from api.deps import get_db, require_user
-from shared.auth import create_magic_link, exchange_magic_link, revoke_session
+from api.deps import get_db
+from shared.auth import (
+    exchange_magic_link,
+    issue_magic_link_or_none,
+    magic_link_token_may_appear_in_json,
+    normalize_email,
+    revoke_session,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 class MagicLinkStartRequest(BaseModel):
-    email: str
+    email: EmailStr
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def strip_email(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip()
+        return v
 
 
 class MagicLinkCompleteRequest(BaseModel):
     token: str
 
+    @field_validator("token", mode="before")
+    @classmethod
+    def strip_token(cls, v: object) -> object:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
 
 @router.post("/magic-link/start")
 def start_magic_link(req: MagicLinkStartRequest, conn=Depends(get_db)):
-    token = create_magic_link(conn, req.email)
-    return {
-        "status": "sent",
-        "email": req.email,
-        "dev_magic_link_token": token,
-    }
+    token = issue_magic_link_or_none(conn, str(req.email))
+    body: dict = {"status": "sent", "email": normalize_email(str(req.email))}
+    if token and magic_link_token_may_appear_in_json():
+        body["dev_magic_link_token"] = token
+    return body
 
 
 @router.post("/magic-link/complete")
@@ -38,11 +57,6 @@ def logout(
     if authorization and authorization.startswith("Bearer "):
         revoke_session(conn, authorization.removeprefix("Bearer ").strip())
     return None
-
-
-@router.get("/me")
-def get_me(user: dict = Depends(require_user)):
-    return {"user": user}
 
 
 @router.get("/health")

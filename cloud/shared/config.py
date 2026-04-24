@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     session_secret: str = "dev-session-secret"
     session_ttl_hours: int = 24
     magic_link_ttl_minutes: int = 15
+    magic_link_max_starts_per_email_per_hour: int = 15
 
     default_workspace_name: str = "Default Workspace"
     allowed_email_domains: str = "*"

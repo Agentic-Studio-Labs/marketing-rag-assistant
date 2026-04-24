@@ -13,6 +13,10 @@ from shared.config import settings
 from shared.db import get_workspace, utcnow
 
 
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
 def _b64encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("utf-8")
 
@@ -67,7 +71,10 @@ def email_allowed(email: str) -> bool:
 
 
 def ensure_user(conn: Connection, email: str) -> dict:
-    row = conn.execute("SELECT * FROM users WHERE email = %s", (email,)).fetchone()
+    email = normalize_email(email)
+    row = conn.execute(
+        "SELECT * FROM users WHERE lower(email) = lower(%s)", (email,)
+    ).fetchone()
     if row:
         return dict(row)
 
@@ -102,7 +109,43 @@ def ensure_user(conn: Connection, email: str) -> dict:
     }
 
 
+def _user_exists(conn: Connection, email: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM users WHERE lower(email) = lower(%s)", (email,)
+    ).fetchone()
+    return row is not None
+
+
+def may_request_magic_link(conn: Connection, raw_email: str) -> tuple[bool, str]:
+    """Returns (allowed_to_issue, normalized_email)."""
+    email = normalize_email(raw_email)
+    if not email or "@" not in email:
+        return False, email
+    if _user_exists(conn, email):
+        return True, email
+    if email_allowed(email):
+        return True, email
+    return False, email
+
+
+def _magic_link_rate_exceeded(conn: Connection, email: str) -> bool:
+    limit = settings.magic_link_max_starts_per_email_per_hour
+    if limit <= 0:
+        return False
+    cutoff = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS c FROM magic_links
+        WHERE lower(email) = lower(%s) AND created_at > %s
+        """,
+        (email, cutoff),
+    ).fetchone()
+    return (row["c"] if row else 0) >= limit
+
+
 def create_magic_link(conn: Connection, email: str) -> str:
+    """Issue a signed magic link for a normalized email (caller validates may_request)."""
+    email = normalize_email(email)
     ensure_user(conn, email)
     payload = {
         "kind": "magic_link",
@@ -122,6 +165,21 @@ def create_magic_link(conn: Connection, email: str) -> str:
     )
     conn.commit()
     return token
+
+
+def issue_magic_link_or_none(conn: Connection, raw_email: str) -> str | None:
+    """Create DB row + token, or return None (caller returns generic 'sent' without leaking)."""
+    ok, email = may_request_magic_link(conn, raw_email)
+    if not ok:
+        return None
+    if _magic_link_rate_exceeded(conn, email):
+        return None
+    return create_magic_link(conn, email)
+
+
+def magic_link_token_may_appear_in_json() -> bool:
+    """In production, the raw token is never returned (use email delivery or logs)."""
+    return settings.environment.lower() not in ("production", "prod")
 
 
 def exchange_magic_link(conn: Connection, token: str) -> dict:

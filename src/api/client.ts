@@ -28,6 +28,32 @@ import { API_BASE_URL, API_MODE, getBackendInfo } from "./runtime";
 
 type QueryValue = string | number | boolean | undefined | null;
 
+function formatHttpErrorDetail(detail: unknown, fallback: string): string {
+  if (detail == null) return fallback;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) =>
+        typeof item === "object" &&
+        item !== null &&
+        "msg" in item &&
+        typeof (item as { msg: unknown }).msg === "string"
+          ? (item as { msg: string }).msg
+          : JSON.stringify(item),
+      )
+      .join(" ");
+  }
+  if (
+    typeof detail === "object" &&
+    detail !== null &&
+    "message" in detail &&
+    typeof (detail as { message: unknown }).message === "string"
+  ) {
+    return (detail as { message: string }).message;
+  }
+  return fallback;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const session = getStoredSession();
   const headers = new Headers(options?.headers ?? {});
@@ -47,8 +73,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
 
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(error.detail || `HTTP ${res.status}`);
+    const error = await res.json().catch(() => ({}));
+    const detail = (error as { detail?: unknown }).detail;
+    throw new Error(
+      formatHttpErrorDetail(detail, `HTTP ${res.status}: ${res.statusText}`),
+    );
   }
 
   if (res.status === 204) {
