@@ -34,7 +34,7 @@ Public GitHub remote for CI: [`Agentic-Studio-Labs/content-intelligence-hub`](ht
 
 ## Gaps / caveats
 
-- `/api/agents/query` on sidecar exists; UI does not call it.
+- Dashboard uses **`/api/agents/query`** (via `api.discover`) when **`VITE_API_MODE` is not `cloud`**; cloud mode still uses **`/api/content/search`**.
 - Watched folders + background watcher not fully wired at startup (local settings story).
 - Production hardening (SQL access pattern, OAuth) is incremental.
 

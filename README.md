@@ -31,7 +31,7 @@ The desktop app talks to the API over HTTPS; build-time **`VITE_*`** and Electro
 
 **Still rough or incomplete**
 
-- Sidecar **`/api/agents/query`** exists; the current UI does not use it.
+- **Local** dashboard search calls sidecar **`/api/agents/query`** (`api.discover`); **cloud** mode uses **`/api/content/search`**.
 - Watched-folder background watching is not fully wired to app startup.
 - Local settings reload from SQLite on startup is incomplete for some paths.
 - Hardening (e.g. private connectivity for Cloud SQL in non-dev) is ongoing.
