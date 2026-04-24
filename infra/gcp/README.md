@@ -2,6 +2,8 @@
 
 Terraform sketch for the Content Intelligence Hub cloud backend: Cloud Run (API + worker), Cloud SQL, GCS, Cloud Tasks, Secret Manager.
 
+**Local gcloud / Terraform auth:** see [AUTH.md](./AUTH.md) (named `cih` config, ADC, optional SA impersonation).
+
 ## Hardening defaults (this module)
 
 | Area | Behavior |
