@@ -10,7 +10,7 @@ Marketing **content intelligence** for operators: search, library, detail views,
 
 Public GitHub remote for CI: [`Agentic-Studio-Labs/content-intelligence-hub`](https://github.com/Agentic-Studio-Labs/content-intelligence-hub) (local folder name may differ).
 
-**GCP production project:** `content-intel-hub-prod` (see `infra/gcp/AUTH.md`, `terraform.tfvars.example`).
+**GCP production project:** `content-intel-hub-prod` (project number `393636347048`; see `infra/gcp/AUTH.md`, `terraform.tfvars.example`). **Local Terraform vars** live in `infra/gcp/terraform.tfvars` (gitignored—copy from `terraform.tfvars.example`).
 
 **`main` branch protection:** pull requests required (0 approving reviews), **strict** status checks so **`node`** and **`python`** CI jobs must pass before merge, no force-push, admins included (`enforce_admins`). Ship work via feature branches → PR → merge.
 
@@ -22,7 +22,7 @@ Public GitHub remote for CI: [`Agentic-Studio-Labs/content-intelligence-hub`](ht
 | `electron/` | Window, optional sidecar spawn; `CIH_USE_LOCAL_SIDECAR`, `CIH_API_BASE_URL` |
 | `sidecar/` | Local FastAPI, agents, ingest, SQLite search/embeddings |
 | `cloud/` | Control-plane API, worker app, Postgres, GCS, task enqueue |
-| `infra/gcp/` | Terraform for GCP resources |
+| `infra/gcp/` | Terraform for GCP resources + **partial-apply recovery** (`README.md`: Tasks 409, missing Run images, bootstrap images) |
 
 **Cloud hardening (summary):** worker verifies **Cloud Tasks OIDC** on job endpoints; **`CIH_CLOUD_ENVIRONMENT=production`** rejects dev crypto defaults and `SKIP_WORKER_OIDC`; CORS is env-driven; Terraform defaults include **GCS public access prevention**, **SQL `ENCRYPTED_ONLY`**, optional **Run invoker** binding for the tasks SA only (`infra/gcp/README.md`).
 
@@ -38,6 +38,8 @@ Public GitHub remote for CI: [`Agentic-Studio-Labs/content-intelligence-hub`](ht
 - **Local sidecar:** `watched_folders` are loaded from SQLite on startup; **`ContentWatcher`** (watchdog) ingests supported files on create/modify; **`PUT /api/settings`** restarts the watcher when folders change (`sidecar/api.py`, `sidecar/watcher.py`).
 - Production hardening (SQL access pattern, OAuth) is incremental.
 - **Magic link (cloud):** emails are normalized (case/trim); **`POST /auth/magic-link/start`** returns a generic **`{ status, email }`** for unknown/disallowed addresses (no user enumeration); **`dev_magic_link_token`** is only included when **`CIH_CLOUD_ENVIRONMENT`** is not **`production`** / **`prod`**. With **`CIH_CLOUD_RESEND_API_KEY`**, the API sends mail via **Resend** from **`CIH_CLOUD_MAGIC_LINK_FROM_EMAIL`** (default **noreply@agenticstudiolabs.com**); optional **`CIH_CLOUD_MAGIC_LINK_APP_BASE_URL`** adds a **`#/login?token=...`** button link. Response may include **`delivery`**: `email` or `email_failed`. Rate limit: **`CIH_CLOUD_MAGIC_LINK_MAX_STARTS_PER_EMAIL_PER_HOUR`** (default 15). Login UI reads **`token`** / **`magic_token`** in the hash query.
+- **Resend + Secret Manager (prod):** verified sending domain **agenticstudiolabs.com**. Secret Manager secret id **`CIH_CLOUD_RESEND_API_KEY`** holds the Resend API key. Terraform (when **`resend_secret_id`** is set) grants **`roles/secretmanager.secretAccessor`** to the **cih-api** runtime SA (default **`PROJECT_NUMBER-compute@developer.gserviceaccount.com`**). **Cloud Run must still mount** that secret as env **`CIH_CLOUD_RESEND_API_KEY`**—IAM alone does not inject env vars.
+- **Terraform / GCP apply (Apr 2026 handoff):** A full apply created **Cloud SQL** `cih-cloud-sql`, GCS **`cih-artifacts-dev`**, empty **`anthropic-primary`** secret, and **Resend IAM**. It **failed** on: **Cloud Tasks** `409` queue already exists (**`cih-job-queue`**), and **Cloud Run** images **`us-docker.pkg.dev/content-intel-hub-prod/cih/cih-api|worker:latest`** not in Artifact Registry. **Fix:** import queue (`terraform import 'google_cloud_tasks_queue.jobs[0]' 'projects/…/locations/us-central1/queues/cih-job-queue'`) **or** **`manage_cloud_tasks_queue = false`**; **build/push** Docker images (`cloud/Dockerfile.api`, `cloud/Dockerfile.worker`) **or** temporary **`gcr.io/cloudrun/hello`** overrides per `infra/gcp/README.md`. Feature branch **`feat/resend-magic-link-email`** — land via PR (e.g. **#10**).
 
 ## Dev workflow
 
