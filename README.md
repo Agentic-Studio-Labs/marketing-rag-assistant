@@ -1,84 +1,61 @@
 # Content Intelligence Hub
 
-Local-first macOS desktop app for searching, organizing, and repurposing marketing content.
+macOS desktop app for searching, organizing, and repurposing marketing content. The **default product direction** is a **thin Electron + React client** backed by a **GCP control plane**; a **local Python sidecar** remains available for development and offline-style use.
 
-The app uses an Electron + React frontend and a Python FastAPI sidecar. Content is stored in local SQLite, searched with FTS5 plus `sqlite-vss`, embedded locally with `sentence-transformers`, and repurposed with Anthropic models through LangGraph-based workflows.
+## Architecture (two modes)
 
-## Current State
+### Cloud (target / production-shaped)
 
-This repository is a working desktop rebuild of an earlier Streamlit app, but it is still in an "implemented core flows, some edges not wired" stage.
+- **`cloud/`** — FastAPI control-plane API on **Cloud Run** (sessions, content metadata, jobs, uploads, integrations).
+- **Cloud SQL (PostgreSQL)** — relational metadata (users, workspaces, content rows, jobs, integration state).
+- **Google Cloud Storage** — workspace-scoped object storage for uploads and generated artifacts.
+- **Cloud Tasks** — async handoff to a separate **Cloud Run worker** that runs LangGraph repurpose and ingest pipelines.
+- **Secret Manager** — provider secrets (e.g. Anthropic); magic-link and session signing secrets in env/Secret Manager for production.
+- **Identity** — operator **magic-link** auth first; OAuth/SSO is a planned upgrade.
+- **`infra/gcp/`** — Terraform sketch for buckets, SQL, queues, services (adjust to your project).
 
-Implemented today:
-- Dashboard with content stats and hybrid search
-- Library view with filters, sorting, and content preview
-- Content detail view with similar-content suggestions
-- LangGraph repurposing flow for `linkedin`, `email`, `twitter`, and `summary`
-- Generated-content browser for saved outputs
-- Manual folder ingestion for local content files
-- Settings UI for Anthropic key and watched-folder list
+The desktop app talks to the API over HTTPS; build-time **`VITE_*`** and Electron **`CIH_API_BASE_URL`** / **`CIH_USE_LOCAL_SIDECAR`** select this mode (see `.env.example`).
 
-Partially implemented or not yet wired:
-- The sidecar has an AI query/discovery endpoint, but the current UI does not use it
-- Watched folders are saved, but automatic background watching is not currently connected at app startup
-- Settings are written to SQLite, but startup does not currently reload them back into runtime config
-- Frontend `vitest` is configured, but there are no frontend test files yet
+### Local sidecar (development / local-first)
 
-## Architecture
+- **`sidecar/`** — FastAPI on **localhost:8420**, **SQLite** + FTS5 + **sqlite-vss**, **sentence-transformers** embeddings, LangGraph repurpose flows, Anthropic via env API key.
+- **`electron/`** — can spawn the sidecar automatically when pointed at local base URL.
 
-- `electron/`: main-process app shell, menu, and Python sidecar lifecycle
-- `src/`: React UI for dashboard, library, generated content, detail view, and settings
-- `sidecar/`: FastAPI service, LangGraph agents, ingestion, storage, search, and providers
-- `docs/plans/`: original design and implementation-plan documents
+## Current state
 
-Main pieces:
-- Electron starts the app window and attempts to spawn the Python sidecar
-- React talks to the sidecar over `http://localhost:8420`
-- SQLite stores source content, generated content, and app settings
-- FTS5 handles keyword search; `sqlite-vss` handles vector similarity
-- `sentence-transformers` creates local embeddings
-- Anthropic powers the LLM-assisted query and repurpose flows
+**Implemented**
 
-## Features
+- Dashboard, library, content detail (similar content), generated-content browser, settings.
+- Cloud path: authenticated API client, magic-link login, job-based repurpose, GCS-backed uploads/ingest (see `cloud/`).
+- Local path: hybrid search, ingestion, repurpose against SQLite.
 
-### Content ingestion
+**Still rough or incomplete**
 
-Supported file types:
-- `.md`
-- `.markdown`
-- `.txt`
-- `.pdf`
-- `.docx`
+- Sidecar **`/api/agents/query`** exists; the current UI does not use it.
+- Watched-folder background watching is not fully wired to app startup.
+- Local settings reload from SQLite on startup is incomplete for some paths.
+- Hardening (e.g. private connectivity for Cloud SQL in non-dev) is ongoing.
 
-Ingestion extracts text, infers a title, creates a local embedding, and upserts the record into SQLite.
+## Repository layout
 
-### Search
+| Path | Role |
+|------|------|
+| `src/` | React UI |
+| `electron/` | Main process, optional sidecar spawn, cloud base URL |
+| `sidecar/` | Local FastAPI + agents + SQLite |
+| `cloud/` | Cloud Run API, shared libs, worker service |
+| `infra/gcp/` | Terraform for GCP resources |
+| `docs/plans/` | Design and implementation notes |
 
-The app supports:
-- keyword search with FTS5
-- vector similarity search with `sqlite-vss`
-- hybrid scoring that merges both result sets
+## Features (summary)
 
-### Repurposing
+- **Ingestion**: markdown, text, PDF, docx — local sidecar writes to SQLite; cloud worker writes to Postgres + GCS.
+- **Search**: FTS + vector + hybrid (local); cloud exposes search/metadata APIs backed by Postgres (and embeddings in the worker path).
+- **Repurpose**: LangGraph pipeline (formats `linkedin`, `email`, `twitter`, `summary`) — runs in sidecar locally or in the Cloud Run worker.
 
-The sidecar includes a LangGraph workflow that:
-1. fetches a source item and similar content
-2. analyzes the source
-3. generates requested output formats
-4. assigns lightweight quality scores
+## Development setup
 
-### Generated content
-
-Generated outputs can be saved locally in SQLite and reviewed in the `Generated` view.
-
-## Development Setup
-
-### Requirements
-
-- Node.js for Electron/React
-- Python 3.12+ for the sidecar
-- Anthropic API key for AI-powered repurposing and query features
-
-### Install dependencies
+**Requirements:** Node.js 22+, Python 3.12+, Anthropic access for AI features. For cloud work you also need a GCP project and deployed API/worker or emulated config.
 
 ```bash
 npm install
@@ -88,17 +65,25 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-## Running The App
+Copy **`.env.example`** to `.env` and adjust for either local sidecar or cloud API URLs.
 
-### Option 1: Run the full desktop app
+### Run desktop against **local** sidecar
 
 ```bash
 npm run dev
 ```
 
-This starts the Electron app; the main process will try to start the Python sidecar automatically.
+Ensure the app is using `http://localhost:8420` (default). Electron starts the sidecar unless `CIH_USE_LOCAL_SIDECAR=false` and a remote `CIH_API_BASE_URL` is set.
 
-### Option 2: Run the sidecar directly
+### Run desktop against **cloud** API
+
+Set (see `.env.example`):
+
+- `CIH_USE_LOCAL_SIDECAR=false`
+- `CIH_API_BASE_URL=https://<your-cloud-run-api>`
+- Build/run renderer with matching `VITE_API_BASE_URL`, `VITE_REQUIRE_AUTH=true`, `VITE_API_MODE=cloud` as needed.
+
+### Run sidecar only
 
 ```bash
 cd sidecar
@@ -106,59 +91,33 @@ source .venv/bin/activate
 python3 -m uvicorn api:app --port 8420 --reload
 ```
 
-Once the sidecar is running, you can start the Electron app separately with:
+## Data and configuration
 
-```bash
-npm run dev
-```
+**Local sidecar** defaults to:
 
-## Data And Configuration
+`~/Library/Application Support/ContentIntelligenceHub` — `content.db`, models cache.
 
-By default, the sidecar stores local data in:
+Env prefix **`CIH_`** for sidecar (see `sidecar/config.py`).
 
-```text
-~/Library/Application Support/ContentIntelligenceHub
-```
-
-That directory holds:
-- `content.db`
-- local embedding/model artifacts
-
-Runtime config uses the `CIH_` prefix, for example:
-- `CIH_PORT`
-- `CIH_ANTHROPIC_API_KEY`
+**Cloud** uses prefix **`CIH_CLOUD_`** (see `cloud/shared/config.py`) — DB, bucket, queue, worker URL, secrets.
 
 ## Testing
 
-Frontend:
-
 ```bash
-npm test
+npm test          # Vitest (renderer)
+cd sidecar && source .venv/bin/activate && python3 -m pytest   # Sidecar
 ```
 
-Note: this is configured, but there are currently no frontend test files.
+CI (GitHub Actions on this repo): Node build + Vitest + sidecar pytest.
 
-Sidecar:
+## Known gaps (product / infra)
 
-```bash
-cd sidecar
-source .venv/bin/activate
-python3 -m pytest
-```
+- Web research integrations (Tavily, Firecrawl, etc.), image gen, Google Docs/Drive delivery, client notifications.
+- OAuth/SSO (magic-link is the current operator auth).
+- Full production hardening: least-privilege IAM, SQL connectivity choices, observability dashboards.
 
-## Known Gaps
+## Reference
 
-Compared with a fuller production-grade content pipeline, this repo does not yet include:
-- web research and scraping integrations such as Tavily or Firecrawl
-- image generation workflows
-- Google Docs or Google Drive delivery
-- client notifications
-- LangGraph Cloud deployment
-- LangSmith observability
-- automatic watched-folder sync on app launch
-
-## Reference Docs
-
-- `CLAUDE.md`
-- `docs/plans/2026-03-06-macos-app-design.md`
-- `docs/plans/2026-03-06-macos-app-implementation.md`
+- `CLAUDE.md` — contributor / agent context
+- `.env.example` — env vars for local vs cloud
+- `docs/plans/` — historical design docs
