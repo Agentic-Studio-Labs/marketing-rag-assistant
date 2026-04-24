@@ -7,7 +7,6 @@ import type { ContentItem, ContentStats } from "../api/types";
 type DiscoverMeta = {
   answer: string;
   filtersApplied: Record<string, string>;
-  searchTerms: string;
 };
 
 export default function Dashboard() {
@@ -43,7 +42,6 @@ export default function Dashboard() {
         setDiscoverMeta({
           answer: res.answer,
           filtersApplied: res.filters_applied,
-          searchTerms: res.search_terms,
         });
         setSearchResults(res.results);
       } else {
