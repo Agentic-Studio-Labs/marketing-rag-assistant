@@ -24,8 +24,9 @@ The **API** service is still shaped for a **public** Cloud Run URL (magic-link a
 
 ```bash
 cd infra/gcp
+cp terraform.tfvars.example terraform.tfvars   # edit if needed; tfvars is gitignored
 terraform init
-terraform plan -var="project_id=YOUR_PROJECT"
+terraform plan
 ```
 
 Set **`grant_worker_invoker_to_tasks_sa=true`** and the tasks SA email after you create that account in IAM (or manage invoker bindings manually in Console).

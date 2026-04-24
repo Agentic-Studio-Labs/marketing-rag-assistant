@@ -44,12 +44,14 @@ Use the **same** Google identity that has access to the CIH GCP project (or one 
 
 ## 4. Point gcloud at the CIH project
 
+Production project for this app: **`content-intel-hub-prod`** (us-central1 Cloud Run: `cih-api-prod`, `cih-worker-prod`).
+
 Your **default** project might be something other than CIH. Set it for this shell or use a **dedicated configuration** so you don’t overwrite other work.
 
 **Option A — current config only**
 
 ```bash
-gcloud config set project YOUR_CIH_PROJECT_ID
+gcloud config set project content-intel-hub-prod
 ```
 
 **Option B — named configuration (recommended)**
@@ -57,7 +59,7 @@ gcloud config set project YOUR_CIH_PROJECT_ID
 ```bash
 gcloud config configurations create cih --no-activate   # skip if it already exists
 gcloud config configurations activate cih
-gcloud config set project YOUR_CIH_PROJECT_ID
+gcloud config set project content-intel-hub-prod
 gcloud config set account YOUR_EMAIL@domain.com
 ```
 
@@ -71,9 +73,9 @@ gcloud config configurations activate default
 ## 5. Verify API access
 
 ```bash
-gcloud services list --enabled --project=YOUR_CIH_PROJECT_ID | head
-gcloud run services list --region=us-central1 --project=YOUR_CIH_PROJECT_ID
-gcloud artifacts repositories list --location=us --project=YOUR_CIH_PROJECT_ID
+gcloud services list --enabled --project=content-intel-hub-prod | head
+gcloud run services list --region=us-central1 --project=content-intel-hub-prod
+gcloud artifacts repositories list --location=us --project=content-intel-hub-prod
 ```
 
 Fix **403** errors in IAM (e.g. **Editor** on the project, or narrower custom roles for deploy).
@@ -83,7 +85,7 @@ Fix **403** errors in IAM (e.g. **Editor** on the project, or narrower custom ro
 If your org prefers **no user keys** and uses a **deploy service account**:
 
 ```bash
-gcloud auth application-default login --impersonate-service-account=deployer@YOUR_CIH_PROJECT_ID.iam.gserviceaccount.com
+gcloud auth application-default login --impersonate-service-account=deployer@content-intel-hub-prod.iam.gserviceaccount.com
 ```
 
 Your user must have **`roles/iam.serviceAccountTokenCreator`** on that SA (or equivalent). This is often used with **least-privilege** deploy identities.

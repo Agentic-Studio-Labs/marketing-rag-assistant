@@ -10,6 +10,8 @@ Marketing **content intelligence** for operators: search, library, detail views,
 
 Public GitHub remote for CI: [`Agentic-Studio-Labs/content-intelligence-hub`](https://github.com/Agentic-Studio-Labs/content-intelligence-hub) (local folder name may differ).
 
+**GCP production project:** `content-intel-hub-prod` (see `infra/gcp/AUTH.md`, `terraform.tfvars.example`).
+
 **`main` branch protection:** pull requests required (0 approving reviews), **strict** status checks so **`node`** and **`python`** CI jobs must pass before merge, no force-push, admins included (`enforce_admins`). Ship work via feature branches → PR → merge.
 
 ## Repository map

@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars (gitignored) and adjust.
+# Do not commit terraform.tfvars.
+
+project_id = "content-intel-hub-prod"
+region     = "us-central1"
+
+# Optional hardening (see variables.tf):
+# db_tier                      = "db-g1-small"
+# db_public_ipv4_enabled       = true
+# db_deletion_protection       = true
+# grant_worker_invoker_to_tasks_sa       = true
+# tasks_invoker_service_account_email     = "YOUR-TASKS-SA@content-intel-hub-prod.iam.gserviceaccount.com"
