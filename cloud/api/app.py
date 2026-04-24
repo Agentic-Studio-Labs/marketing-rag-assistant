@@ -1,4 +1,3 @@
-import sqlite3
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -15,25 +14,16 @@ from api.routes import (
     uploads,
 )
 from shared.config import settings as cloud_settings
-from shared.db import get_connection, init_schema
-
-_conn: sqlite3.Connection | None = None
-
-
-def _get_conn() -> sqlite3.Connection:
-    global _conn
-    if _conn is None:
-        _conn = get_connection()
-        init_schema(_conn)
-    return _conn
+from shared.db import close_pool, init_schema, managed_connection, open_pool
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _get_conn()
+    open_pool()
+    with managed_connection() as conn:
+        init_schema(conn)
     yield
-    if _conn is not None:
-        _conn.close()
+    close_pool()
 
 
 app = FastAPI(title="Content Intelligence Hub Cloud API", lifespan=lifespan)

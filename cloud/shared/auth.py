@@ -3,11 +3,11 @@ import hashlib
 import hmac
 import json
 import secrets
-import sqlite3
 import uuid
 from datetime import datetime, timedelta, UTC
 
 from fastapi import HTTPException
+from psycopg import Connection
 
 from shared.config import settings
 from shared.db import get_workspace, utcnow
@@ -66,8 +66,8 @@ def email_allowed(email: str) -> bool:
     return domain in {item.lower() for item in allowed}
 
 
-def ensure_user(conn: sqlite3.Connection, email: str) -> dict:
-    row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+def ensure_user(conn: Connection, email: str) -> dict:
+    row = conn.execute("SELECT * FROM users WHERE email = %s", (email,)).fetchone()
     if row:
         return dict(row)
 
@@ -78,11 +78,18 @@ def ensure_user(conn: sqlite3.Connection, email: str) -> dict:
     user_id = str(uuid.uuid4())
     created_at = utcnow()
     conn.execute(
-        "INSERT INTO users (id, email, role, workspace_id, created_at) VALUES (?, ?, ?, ?, ?)",
+        """
+        INSERT INTO users (id, email, role, workspace_id, created_at)
+        VALUES (%s, %s, %s, %s, %s)
+        """,
         (user_id, email, "operator", workspace["id"], created_at),
     )
     conn.execute(
-        "INSERT INTO workspace_memberships (user_id, workspace_id, role, created_at) VALUES (?, ?, ?, ?)",
+        """
+        INSERT INTO workspace_memberships (user_id, workspace_id, role, created_at)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (user_id, workspace_id) DO NOTHING
+        """,
         (user_id, workspace["id"], "operator", created_at),
     )
     conn.commit()
@@ -95,7 +102,7 @@ def ensure_user(conn: sqlite3.Connection, email: str) -> dict:
     }
 
 
-def create_magic_link(conn: sqlite3.Connection, email: str) -> str:
+def create_magic_link(conn: Connection, email: str) -> str:
     ensure_user(conn, email)
     payload = {
         "kind": "magic_link",
@@ -107,21 +114,24 @@ def create_magic_link(conn: sqlite3.Connection, email: str) -> str:
     }
     token = sign_payload(payload, settings.magic_link_secret)
     conn.execute(
-        "INSERT INTO magic_links (id, email, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
+        """
+        INSERT INTO magic_links (id, email, token_hash, expires_at, created_at)
+        VALUES (%s, %s, %s, %s, %s)
+        """,
         (str(uuid.uuid4()), email, hash_token(token), payload["expires_at"], utcnow()),
     )
     conn.commit()
     return token
 
 
-def exchange_magic_link(conn: sqlite3.Connection, token: str) -> dict:
+def exchange_magic_link(conn: Connection, token: str) -> dict:
     payload = verify_signed_payload(token, settings.magic_link_secret)
     if payload.get("kind") != "magic_link":
         raise HTTPException(status_code=400, detail="Unexpected token type")
 
     token_hash = hash_token(token)
     row = conn.execute(
-        "SELECT * FROM magic_links WHERE token_hash = ? AND used_at IS NULL",
+        "SELECT * FROM magic_links WHERE token_hash = %s AND used_at IS NULL",
         (token_hash,),
     ).fetchone()
     if row is None:
@@ -132,7 +142,7 @@ def exchange_magic_link(conn: sqlite3.Connection, token: str) -> dict:
     email = payload["email"]
     user = ensure_user(conn, email)
     conn.execute(
-        "UPDATE magic_links SET used_at = ? WHERE token_hash = ?",
+        "UPDATE magic_links SET used_at = %s WHERE token_hash = %s",
         (utcnow(), token_hash),
     )
     conn.commit()
@@ -140,20 +150,23 @@ def exchange_magic_link(conn: sqlite3.Connection, token: str) -> dict:
     return {"session": session, "user": user}
 
 
-def create_session(conn: sqlite3.Connection, user_id: str) -> dict:
+def create_session(conn: Connection, user_id: str) -> dict:
     token = secrets.token_urlsafe(32)
     expires_at = (
         datetime.now(UTC) + timedelta(hours=settings.session_ttl_hours)
     ).isoformat()
     conn.execute(
-        "INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
+        """
+        INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at)
+        VALUES (%s, %s, %s, %s, %s)
+        """,
         (str(uuid.uuid4()), user_id, hash_token(token), expires_at, utcnow()),
     )
     conn.commit()
     return {"token": token, "expires_at": expires_at}
 
 
-def get_user_for_session(conn: sqlite3.Connection, token: str) -> dict:
+def get_user_for_session(conn: Connection, token: str) -> dict:
     token_hash = hash_token(token)
     row = conn.execute(
         """
@@ -161,18 +174,15 @@ def get_user_for_session(conn: sqlite3.Connection, token: str) -> dict:
         FROM sessions
         JOIN users ON users.id = sessions.user_id
         LEFT JOIN workspaces ON workspaces.id = users.workspace_id
-        WHERE sessions.token_hash = ? AND sessions.revoked_at IS NULL
+        WHERE sessions.token_hash = %s AND sessions.revoked_at IS NULL
         """,
         (token_hash,),
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=401, detail="Invalid session")
 
-    expires_at = datetime.fromisoformat(
-        row["created_at"]
-    )  # placeholder to satisfy mypy-ish flow
     session_row = conn.execute(
-        "SELECT expires_at FROM sessions WHERE token_hash = ?",
+        "SELECT expires_at FROM sessions WHERE token_hash = %s",
         (token_hash,),
     ).fetchone()
     expires_at = datetime.fromisoformat(session_row["expires_at"])
@@ -182,9 +192,9 @@ def get_user_for_session(conn: sqlite3.Connection, token: str) -> dict:
     return dict(row)
 
 
-def revoke_session(conn: sqlite3.Connection, token: str) -> None:
+def revoke_session(conn: Connection, token: str) -> None:
     conn.execute(
-        "UPDATE sessions SET revoked_at = ? WHERE token_hash = ?",
+        "UPDATE sessions SET revoked_at = %s WHERE token_hash = %s",
         (utcnow(), hash_token(token)),
     )
     conn.commit()

@@ -1,5 +1,3 @@
-import sqlite3
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
@@ -20,31 +18,31 @@ def list_content(
     search: str | None = Query(default=None),
     content_type: str | None = Query(default=None),
     persona: str | None = Query(default=None),
-    conn: sqlite3.Connection = Depends(get_db),
+    conn=Depends(get_db),
     user: dict = Depends(require_user),
 ):
     clauses = ["1=1"]
     params: list[object] = []
     if search:
-        clauses.append("(title LIKE ? OR summary LIKE ? OR body LIKE ?)")
+        clauses.append("(title ILIKE %s OR summary ILIKE %s OR body ILIKE %s)")
         params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
     if content_type:
-        clauses.append("content_type = ?")
+        clauses.append("content_type = %s")
         params.append(content_type)
     if persona:
-        clauses.append("persona = ?")
+        clauses.append("persona = %s")
         params.append(persona)
 
     total = conn.execute(
-        f"SELECT COUNT(*) FROM content_items WHERE {' AND '.join(clauses)}",
+        f"SELECT COUNT(*) AS count FROM content_items WHERE {' AND '.join(clauses)}",
         tuple(params),
-    ).fetchone()[0]
+    ).fetchone()["count"]
     rows = conn.execute(
         f"""
         SELECT * FROM content_items
         WHERE {" AND ".join(clauses)}
         ORDER BY updated_at DESC
-        LIMIT ? OFFSET ?
+        LIMIT %s OFFSET %s
         """,
         tuple(params + [limit, offset]),
     ).fetchall()
@@ -61,18 +59,18 @@ def list_content(
 @router.post("/search")
 def search_content(
     req: SearchRequest,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn=Depends(get_db),
     user: dict = Depends(require_user),
 ):
     filters = req.filters or {}
     query = req.query
-    clauses = ["(title LIKE ? OR summary LIKE ? OR body LIKE ?)"]
+    clauses = ["(title ILIKE %s OR summary ILIKE %s OR body ILIKE %s)"]
     params: list[object] = [f"%{query}%", f"%{query}%", f"%{query}%"]
     if filters.get("content_type"):
-        clauses.append("content_type = ?")
+        clauses.append("content_type = %s")
         params.append(filters["content_type"])
     if filters.get("persona"):
-        clauses.append("persona = ?")
+        clauses.append("persona = %s")
         params.append(filters["persona"])
     rows = conn.execute(
         f"""
@@ -91,19 +89,21 @@ def search_content(
 
 @router.get("/stats")
 def content_stats(
-    conn: sqlite3.Connection = Depends(get_db),
+    conn=Depends(get_db),
     user: dict = Depends(require_user),
 ):
-    total = conn.execute("SELECT COUNT(*) FROM content_items").fetchone()[0]
+    total = conn.execute("SELECT COUNT(*) AS count FROM content_items").fetchone()[
+        "count"
+    ]
     avg_performance = conn.execute(
-        "SELECT COALESCE(AVG(performance_score), 0) FROM content_items"
-    ).fetchone()[0]
+        "SELECT COALESCE(AVG(performance_score), 0) AS avg_performance FROM content_items"
+    ).fetchone()["avg_performance"]
 
     def group(column: str) -> dict[str, int]:
         rows = conn.execute(
             f"SELECT {column}, COUNT(*) AS count FROM content_items WHERE {column} != '' GROUP BY {column}"
         ).fetchall()
-        return {row[0]: row[1] for row in rows}
+        return {row[column]: row["count"] for row in rows}
 
     return {
         "total": total,
@@ -118,11 +118,11 @@ def content_stats(
 @router.get("/{content_id}")
 def get_content(
     content_id: str,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn=Depends(get_db),
     user: dict = Depends(require_user),
 ):
     row = conn.execute(
-        "SELECT * FROM content_items WHERE id = ?", (content_id,)
+        "SELECT * FROM content_items WHERE id = %s", (content_id,)
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Content not found")
@@ -132,11 +132,11 @@ def get_content(
 @router.get("/{content_id}/similar")
 def get_similar_content(
     content_id: str,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn=Depends(get_db),
     user: dict = Depends(require_user),
 ):
     row = conn.execute(
-        "SELECT content_type, id FROM content_items WHERE id = ?",
+        "SELECT content_type, id FROM content_items WHERE id = %s",
         (content_id,),
     ).fetchone()
     if row is None:
@@ -144,7 +144,7 @@ def get_similar_content(
     rows = conn.execute(
         """
         SELECT * FROM content_items
-        WHERE content_type = ? AND id != ?
+        WHERE content_type = %s AND id != %s
         ORDER BY updated_at DESC
         LIMIT 5
         """,

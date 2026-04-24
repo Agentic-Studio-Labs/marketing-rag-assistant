@@ -1,11 +1,17 @@
-import sqlite3
 import uuid
 
+from psycopg import Connection
+
 from shared.config import settings
-from shared.db import utcnow
-from shared.jobs import add_artifact, get_job, update_job_status
+from shared.db import get_workspace, utcnow
+from shared.jobs import (
+    add_artifact,
+    get_job,
+    transition_job_to_running,
+    update_job_status,
+)
 from shared.providers.anthropic import AnthropicProvider
-from shared.storage import write_object
+from shared.storage import build_generated_object_path, write_object
 from workers.repurpose_graph import build_repurpose_graph
 
 
@@ -16,12 +22,21 @@ def _get_provider() -> AnthropicProvider:
     return AnthropicProvider(api_key=api_key)
 
 
-def process_repurpose_job(conn: sqlite3.Connection, job_id: str) -> dict:
+def process_repurpose_job(conn: Connection, job_id: str) -> dict:
     job = get_job(conn, job_id)
+    if job["status"] == "succeeded":
+        return job["result"] or {}
+    if job["status"] == "failed":
+        raise RuntimeError(job.get("error") or "Job already failed")
+    if not transition_job_to_running(conn, job_id):
+        current = get_job(conn, job_id)
+        if current["status"] == "succeeded":
+            return current["result"] or {}
+        raise RuntimeError(f"Job is already {current['status']}")
     payload = job["payload"]
     source_content_id = payload["content_id"]
     source = conn.execute(
-        "SELECT * FROM content_items WHERE id = ?",
+        "SELECT * FROM content_items WHERE id = %s",
         (source_content_id,),
     ).fetchone()
     if source is None:
@@ -32,7 +47,7 @@ def process_repurpose_job(conn: sqlite3.Connection, job_id: str) -> dict:
 
     provider = _get_provider()
     source_dict = dict(source)
-    update_job_status(conn, job_id, status="running")
+    workspace = get_workspace(conn)
     app = build_repurpose_graph(provider)
     final_state = app.invoke(
         {
@@ -52,13 +67,17 @@ def process_repurpose_job(conn: sqlite3.Connection, job_id: str) -> dict:
     saved_ids: dict[str, str] = {}
 
     for fmt, body in generated_content.items():
-        object_path = f"generated/{job_id}/{fmt}.txt"
-        write_object(object_path, body.encode("utf-8"))
+        object_path = build_generated_object_path(
+            source_dict.get("workspace_id") or workspace["id"],
+            job_id,
+            f"{fmt}.txt",
+        )
+        object_uri = write_object(object_path, body.encode("utf-8"))
         add_artifact(
             conn,
             job_id=job_id,
             kind=fmt,
-            path=object_path,
+            path=object_uri,
             preview_text=body[:200],
         )
 
@@ -67,12 +86,19 @@ def process_repurpose_job(conn: sqlite3.Connection, job_id: str) -> dict:
         conn.execute(
             """
             INSERT INTO generated_items
-            (id, workspace_id, source_content_id, source_title, format, tone, body, quality_score, prompts, artifact_path, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, workspace_id, job_id, source_content_id, source_title, format, tone, body, quality_score, prompts, artifact_path, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (job_id, format) DO UPDATE SET
+                body = EXCLUDED.body,
+                quality_score = EXCLUDED.quality_score,
+                prompts = EXCLUDED.prompts,
+                artifact_path = EXCLUDED.artifact_path,
+                created_at = EXCLUDED.created_at
             """,
             (
                 generated_id,
                 source_dict.get("workspace_id"),
+                job_id,
                 source_content_id,
                 source_dict["title"],
                 fmt,
@@ -80,7 +106,7 @@ def process_repurpose_job(conn: sqlite3.Connection, job_id: str) -> dict:
                 body,
                 quality_scores[fmt],
                 "{}",
-                object_path,
+                object_uri,
                 utcnow(),
             ),
         )

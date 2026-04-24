@@ -1,5 +1,3 @@
-import sqlite3
-
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
@@ -18,9 +16,7 @@ class MagicLinkCompleteRequest(BaseModel):
 
 
 @router.post("/magic-link/start")
-def start_magic_link(
-    req: MagicLinkStartRequest, conn: sqlite3.Connection = Depends(get_db)
-):
+def start_magic_link(req: MagicLinkStartRequest, conn=Depends(get_db)):
     token = create_magic_link(conn, req.email)
     return {
         "status": "sent",
@@ -30,16 +26,14 @@ def start_magic_link(
 
 
 @router.post("/magic-link/complete")
-def complete_magic_link(
-    req: MagicLinkCompleteRequest, conn: sqlite3.Connection = Depends(get_db)
-):
+def complete_magic_link(req: MagicLinkCompleteRequest, conn=Depends(get_db)):
     return exchange_magic_link(conn, req.token)
 
 
 @router.post("/logout", status_code=204)
 def logout(
     authorization: str | None = Header(default=None),
-    conn: sqlite3.Connection = Depends(get_db),
+    conn=Depends(get_db),
 ):
     if authorization and authorization.startswith("Bearer "):
         revoke_session(conn, authorization.removeprefix("Bearer ").strip())

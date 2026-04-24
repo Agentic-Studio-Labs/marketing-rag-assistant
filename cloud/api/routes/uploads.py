@@ -1,16 +1,25 @@
-import uuid
+from datetime import datetime, UTC
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Depends
 from fastapi.responses import Response
 
-from shared.storage import write_object
+from api.deps import get_db, require_user
+from shared.storage import build_upload_object_path, write_object
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
 
 
 @router.post("/init")
-def init_upload(body=Body(...)):
-    object_path = f"uploads/{uuid.uuid4()}/{body['file_name']}"
+def init_upload(
+    body=Body(...),
+    conn=Depends(get_db),
+    user: dict = Depends(require_user),
+):
+    object_path = build_upload_object_path(
+        user.get("workspace_id"),
+        body["file_name"],
+        datetime.now(UTC),
+    )
     return {
         "object_path": object_path,
         "upload_url": f"/uploads/dev/{object_path}",

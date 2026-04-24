@@ -1,5 +1,3 @@
-import sqlite3
-
 from fastapi import APIRouter, Depends
 
 from api.deps import get_db, require_user
@@ -11,7 +9,7 @@ router = APIRouter(tags=["settings"])
 
 @router.get("/api/settings")
 def get_settings(
-    conn: sqlite3.Connection = Depends(get_db),
+    conn=Depends(get_db),
     user: dict = Depends(require_user),
 ):
     workspace = get_workspace(conn)

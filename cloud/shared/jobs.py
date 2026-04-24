@@ -1,12 +1,13 @@
 import json
-import sqlite3
 import uuid
+
+from psycopg import Connection
 
 from shared.db import get_workspace, list_rows, utcnow
 
 
 def create_job(
-    conn: sqlite3.Connection,
+    conn: Connection,
     *,
     job_type: str,
     payload: dict,
@@ -20,7 +21,7 @@ def create_job(
         """
         INSERT INTO jobs
         (id, workspace_id, job_type, status, source_content_id, payload_json, created_by, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             job_id,
@@ -38,14 +39,14 @@ def create_job(
     return get_job(conn, job_id)
 
 
-def get_job(conn: sqlite3.Connection, job_id: str) -> dict:
-    row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+def get_job(conn: Connection, job_id: str) -> dict:
+    row = conn.execute("SELECT * FROM jobs WHERE id = %s", (job_id,)).fetchone()
     if row is None:
         raise KeyError(job_id)
 
     artifacts = list_rows(
         conn,
-        "SELECT * FROM artifacts WHERE job_id = ? ORDER BY created_at DESC",
+        "SELECT * FROM artifacts WHERE job_id = %s ORDER BY created_at DESC",
         (job_id,),
     )
     result = dict(row)
@@ -56,15 +57,15 @@ def get_job(conn: sqlite3.Connection, job_id: str) -> dict:
 
 
 def list_jobs(
-    conn: sqlite3.Connection, *, job_type: str | None = None, status: str | None = None
+    conn: Connection, *, job_type: str | None = None, status: str | None = None
 ) -> list[dict]:
     clauses = ["1=1"]
     params: list[str] = []
     if job_type:
-        clauses.append("job_type = ?")
+        clauses.append("job_type = %s")
         params.append(job_type)
     if status:
-        clauses.append("status = ?")
+        clauses.append("status = %s")
         params.append(status)
 
     rows = list_rows(
@@ -89,7 +90,7 @@ def list_jobs(
 
 
 def update_job_status(
-    conn: sqlite3.Connection,
+    conn: Connection,
     job_id: str,
     *,
     status: str,
@@ -97,7 +98,7 @@ def update_job_status(
     result: dict | None = None,
 ) -> None:
     conn.execute(
-        "UPDATE jobs SET status = ?, error = ?, result_json = ?, updated_at = ? WHERE id = ?",
+        "UPDATE jobs SET status = %s, error = %s, result_json = %s, updated_at = %s WHERE id = %s",
         (
             status,
             error,
@@ -110,7 +111,7 @@ def update_job_status(
 
 
 def add_artifact(
-    conn: sqlite3.Connection,
+    conn: Connection,
     *,
     job_id: str,
     kind: str,
@@ -122,7 +123,7 @@ def add_artifact(
     conn.execute(
         """
         INSERT INTO artifacts (id, workspace_id, job_id, kind, path, content_type, preview_text, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             str(uuid.uuid4()),
@@ -136,3 +137,17 @@ def add_artifact(
         ),
     )
     conn.commit()
+
+
+def transition_job_to_running(conn: Connection, job_id: str) -> bool:
+    row = conn.execute(
+        """
+        UPDATE jobs
+        SET status = %s, updated_at = %s
+        WHERE id = %s AND status = %s
+        RETURNING id
+        """,
+        ("running", utcnow(), job_id, "queued"),
+    ).fetchone()
+    conn.commit()
+    return row is not None

@@ -8,7 +8,6 @@ class Settings(BaseSettings):
 
     port: int = 8484
     data_dir: Path = Path(__file__).resolve().parents[1] / ".data"
-    database_path: Path | None = None
     storage_dir: Path | None = None
 
     magic_link_secret: str = "dev-magic-link-secret"
@@ -24,13 +23,30 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = ""
     anthropic_secret_ref: str = "anthropic_primary"
-    artifact_bucket: str = "cih-artifacts-dev"
+    artifact_bucket: str = ""
     queue_mode: str = "inline"
-    gcp_project_id: str = "local-dev"
+    gcp_project_id: str = ""
+    db_name: str = "cih"
+    db_user: str = "cih_app"
+    db_password: str = ""
+    db_host: str = ""
+    db_port: int = 5432
+    cloudsql_instance_connection_name: str = ""
+    db_pool_min_size: int = 1
+    db_pool_max_size: int = 4
+    tasks_queue: str = "cih-job-queue"
+    tasks_location: str = "us-central1"
+    worker_url: str = ""
+    tasks_service_account_email: str = ""
+    worker_timeout_seconds: int = 3600
 
     @property
-    def db_path(self) -> Path:
-        return self.database_path or (self.data_dir / "cloud.db")
+    def db_host_path(self) -> str:
+        if self.db_host:
+            return self.db_host
+        if self.cloudsql_instance_connection_name:
+            return f"/cloudsql/{self.cloudsql_instance_connection_name}"
+        return ""
 
     @property
     def object_root(self) -> Path:

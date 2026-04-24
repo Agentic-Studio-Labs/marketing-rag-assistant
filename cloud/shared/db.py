@@ -1,8 +1,12 @@
 import json
-import sqlite3
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, UTC
+from datetime import UTC, datetime
+from typing import Any
+
+from psycopg import Connection
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 
 from shared.config import settings
 
@@ -11,17 +15,55 @@ def utcnow() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def get_connection(db_path: str | None = None) -> sqlite3.Connection:
+_pool: ConnectionPool | None = None
+
+
+def connection_kwargs() -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
+        "dbname": settings.db_name,
+        "user": settings.db_user,
+        "password": settings.db_password,
+        "port": settings.db_port,
+        "row_factory": dict_row,
+    }
+    if settings.db_host_path:
+        kwargs["host"] = settings.db_host_path
+    return kwargs
+
+
+def open_pool() -> ConnectionPool:
+    global _pool
+    if _pool is None:
+        _pool = ConnectionPool(
+            min_size=settings.db_pool_min_size,
+            max_size=settings.db_pool_max_size,
+            kwargs=connection_kwargs(),
+            open=True,
+        )
+    return _pool
+
+
+def close_pool() -> None:
+    global _pool
+    if _pool is not None:
+        _pool.close()
+        _pool = None
+
+
+def get_connection() -> Connection:
     settings.ensure_dirs()
-    conn = sqlite3.connect(str(db_path or settings.db_path), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    return open_pool().getconn()
 
 
-def init_schema(conn: sqlite3.Connection) -> None:
-    conn.executescript(
-        """
+def release_connection(conn: Connection) -> None:
+    pool = open_pool()
+    pool.putconn(conn)
+
+
+def init_schema(conn: Connection) -> None:
+    schema_sql = """
+        CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
         CREATE TABLE IF NOT EXISTS workspaces (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -108,6 +150,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS generated_items (
             id TEXT PRIMARY KEY,
             workspace_id TEXT REFERENCES workspaces(id),
+            job_id TEXT REFERENCES jobs(id),
             source_content_id TEXT REFERENCES content_items(id),
             source_title TEXT NOT NULL,
             format TEXT NOT NULL,
@@ -135,11 +178,22 @@ def init_schema(conn: sqlite3.Connection) -> None:
             workspace_id TEXT REFERENCES workspaces(id),
             provider TEXT NOT NULL UNIQUE,
             secret_ref TEXT,
-            connected INTEGER NOT NULL DEFAULT 0,
+            connected BOOLEAN NOT NULL DEFAULT FALSE,
             last_checked_at TEXT,
             last_rotated_at TEXT,
             status_message TEXT
         );
+
+        ALTER TABLE integration_states
+        ALTER COLUMN connected DROP DEFAULT;
+        ALTER TABLE integration_states
+        ALTER COLUMN connected TYPE BOOLEAN
+        USING CASE
+            WHEN connected::text IN ('0', 'false', 'f') THEN FALSE
+            ELSE TRUE
+        END;
+        ALTER TABLE integration_states
+        ALTER COLUMN connected SET DEFAULT FALSE;
 
         CREATE TABLE IF NOT EXISTS workspace_config (
             workspace_id TEXT NOT NULL REFERENCES workspaces(id),
@@ -153,14 +207,16 @@ def init_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at);
         CREATE INDEX IF NOT EXISTS idx_content_workspace ON content_items(workspace_id);
         CREATE INDEX IF NOT EXISTS idx_generated_workspace ON generated_items(workspace_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_generated_job_format ON generated_items(job_id, format);
         """
-    )
+    with conn.cursor() as cur:
+        cur.execute(schema_sql)
     conn.commit()
     ensure_default_workspace(conn)
     ensure_default_integrations(conn)
 
 
-def ensure_default_workspace(conn: sqlite3.Connection) -> str:
+def ensure_default_workspace(conn: Connection) -> str:
     row = conn.execute(
         "SELECT id FROM workspaces ORDER BY created_at LIMIT 1"
     ).fetchone()
@@ -169,26 +225,35 @@ def ensure_default_workspace(conn: sqlite3.Connection) -> str:
 
     workspace_id = str(uuid.uuid4())
     conn.execute(
-        "INSERT INTO workspaces (id, name, created_at) VALUES (?, ?, ?)",
+        "INSERT INTO workspaces (id, name, created_at) VALUES (%s, %s, %s)",
         (workspace_id, settings.default_workspace_name, utcnow()),
     )
     conn.commit()
     return workspace_id
 
 
-def ensure_default_integrations(conn: sqlite3.Connection) -> None:
+def ensure_default_integrations(conn: Connection) -> None:
     workspace_id = ensure_default_workspace(conn)
     defaults = [
-        ("anthropic", settings.anthropic_secret_ref, 0, "Pending configuration"),
-        ("gcs", "gcs_bucket", 1, f"Bucket {settings.artifact_bucket}"),
-        ("magic_link", "magic_link_secret", 1, "Magic-link auth enabled"),
+        ("anthropic", settings.anthropic_secret_ref, False, "Pending configuration"),
+        (
+            "gcs",
+            "gcs_bucket",
+            bool(settings.artifact_bucket),
+            f"Bucket {settings.artifact_bucket or 'unconfigured'}",
+        ),
+        ("magic_link", "magic_link_secret", True, "Magic-link auth enabled"),
     ]
     for provider, secret_ref, connected, status_message in defaults:
         conn.execute(
             """
-            INSERT OR IGNORE INTO integration_states
+            INSERT INTO integration_states
             (id, workspace_id, provider, secret_ref, connected, status_message)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (provider) DO UPDATE
+            SET secret_ref = EXCLUDED.secret_ref,
+                connected = EXCLUDED.connected,
+                status_message = EXCLUDED.status_message
             """,
             (
                 str(uuid.uuid4()),
@@ -205,24 +270,23 @@ def ensure_default_integrations(conn: sqlite3.Connection) -> None:
 @contextmanager
 def managed_connection():
     conn = get_connection()
-    init_schema(conn)
     try:
         yield conn
     finally:
-        conn.close()
+        release_connection(conn)
 
 
-def get_workspace(conn: sqlite3.Connection) -> sqlite3.Row:
+def get_workspace(conn: Connection) -> dict:
     return conn.execute(
         "SELECT * FROM workspaces ORDER BY created_at LIMIT 1"
     ).fetchone()
 
 
-def row_to_dict(row: sqlite3.Row | None) -> dict | None:
+def row_to_dict(row: dict | None) -> dict | None:
     return dict(row) if row is not None else None
 
 
-def list_rows(conn: sqlite3.Connection, query: str, params: tuple = ()) -> list[dict]:
+def list_rows(conn: Connection, query: str, params: tuple = ()) -> list[dict]:
     return [dict(row) for row in conn.execute(query, params).fetchall()]
 
 

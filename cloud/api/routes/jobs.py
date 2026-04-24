@@ -1,5 +1,3 @@
-import sqlite3
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -26,7 +24,7 @@ class IngestJobRequest(BaseModel):
 def api_list_jobs(
     job_type: str | None = Query(default=None),
     status: str | None = Query(default=None),
-    conn: sqlite3.Connection = Depends(get_db),
+    conn=Depends(get_db),
     user: dict = Depends(require_user),
 ):
     items = list_jobs(conn, job_type=job_type, status=status)
@@ -42,7 +40,7 @@ def api_list_jobs(
 @router.get("/{job_id}")
 def api_get_job(
     job_id: str,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn=Depends(get_db),
     user: dict = Depends(require_user),
 ):
     try:
@@ -54,7 +52,7 @@ def api_get_job(
 @router.post("/repurpose")
 def api_create_repurpose_job(
     req: RepurposeJobRequest,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn=Depends(get_db),
     user: dict = Depends(require_user),
 ):
     job = create_job(
@@ -71,7 +69,7 @@ def api_create_repurpose_job(
 @router.post("/ingest")
 def api_create_ingest_job(
     req: IngestJobRequest,
-    conn: sqlite3.Connection = Depends(get_db),
+    conn=Depends(get_db),
     user: dict = Depends(require_user),
 ):
     job = create_job(
