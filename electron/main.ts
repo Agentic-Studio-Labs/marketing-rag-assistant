@@ -1,13 +1,45 @@
-import { app, BrowserWindow, Menu, nativeImage } from 'electron'
-import path from 'path'
-import { startSidecar, stopSidecar } from './sidecar'
+import { app, BrowserWindow, Menu, nativeImage } from "electron";
+import fs from "fs";
+import path from "path";
+import { startSidecar, stopSidecar } from "./sidecar";
 
-const APP_NAME = 'Content Intelligence Hub'
+// Load .env into process.env for the main process. Vite's renderer-side
+// env handling does not reach the main process, so CIH_USE_LOCAL_SIDECAR /
+// CIH_API_BASE_URL would otherwise be undefined here.
+function loadDotEnv(): void {
+  const envPath = path.resolve(app.getAppPath(), ".env");
+  let raw: string;
+  try {
+    raw = fs.readFileSync(envPath, "utf8");
+  } catch {
+    return;
+  }
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq < 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let value = trimmed.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (key && process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+}
+loadDotEnv();
+
+const APP_NAME = "Content Intelligence Hub";
 
 // Override the app name so macOS menu bar and About window show it correctly
-app.setName(APP_NAME)
+app.setName(APP_NAME);
 
-let mainWindow: BrowserWindow | null = null
+let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -15,20 +47,19 @@ function createWindow(): void {
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    icon: path.join(__dirname, '../../build/icon.png'),
-    titleBarStyle: 'hiddenInset',
+    icon: path.join(__dirname, "../../build/icon.png"),
+    titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 16 },
     webPreferences: {
-      preload: path.join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
       nodeIntegration: false,
     },
-  })
+  });
 
   if (process.env.ELECTRON_RENDERER_URL) {
-    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
+    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
+    mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
   }
 }
 
@@ -36,10 +67,10 @@ function showLicenses(): void {
   const win = new BrowserWindow({
     width: 600,
     height: 700,
-    title: 'Open Source Licenses',
+    title: "Open Source Licenses",
     minimizable: false,
     maximizable: false,
-  })
+  });
 
   const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
@@ -87,9 +118,9 @@ function showLicenses(): void {
 </table>
 
 <p class="sub" style="margin-top: 20px;">All libraries are MIT or Apache-2.0 licensed unless otherwise noted.</p>
-</body></html>`
+</body></html>`;
 
-  win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+  win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 }
 
 function buildMenu(): void {
@@ -97,101 +128,101 @@ function buildMenu(): void {
     {
       label: APP_NAME,
       submenu: [
-        { label: `About ${APP_NAME}`, role: 'about' },
-        { label: 'Open Source Licenses', click: showLicenses },
-        { type: 'separator' },
-        { label: `Hide ${APP_NAME}`, role: 'hide' },
-        { label: 'Hide Others', role: 'hideOthers' },
-        { label: 'Show All', role: 'unhide' },
-        { type: 'separator' },
+        { label: `About ${APP_NAME}`, role: "about" },
+        { label: "Open Source Licenses", click: showLicenses },
+        { type: "separator" },
+        { label: `Hide ${APP_NAME}`, role: "hide" },
+        { label: "Hide Others", role: "hideOthers" },
+        { label: "Show All", role: "unhide" },
+        { type: "separator" },
         {
           label: `Restart ${APP_NAME}`,
-          accelerator: 'CmdOrCtrl+Shift+R',
+          accelerator: "CmdOrCtrl+Shift+R",
           click: async () => {
-            stopSidecar()
+            stopSidecar();
             try {
-              await startSidecar()
+              await startSidecar();
             } catch (err) {
-              console.error('Sidecar restart failed:', err)
+              console.error("Sidecar restart failed:", err);
             }
             if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.reload()
+              mainWindow.reload();
             } else {
-              createWindow()
+              createWindow();
             }
           },
         },
-        { label: `Quit ${APP_NAME}`, role: 'quit' },
+        { label: `Quit ${APP_NAME}`, role: "quit" },
       ],
     },
     {
-      label: 'Edit',
+      label: "Edit",
       submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
-        { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' },
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "selectAll" },
       ],
     },
     {
-      label: 'View',
+      label: "View",
       submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' },
+        { role: "reload" },
+        { role: "forceReload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        { role: "togglefullscreen" },
       ],
     },
     {
-      label: 'Window',
+      label: "Window",
       submenu: [
-        { role: 'minimize' },
-        { role: 'zoom' },
-        { type: 'separator' },
-        { role: 'front' },
+        { role: "minimize" },
+        { role: "zoom" },
+        { type: "separator" },
+        { role: "front" },
       ],
     },
-  ]
+  ];
 
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 app.whenReady().then(async () => {
-  const iconPath = path.join(__dirname, '../../build/icon.png')
-  const icon = nativeImage.createFromPath(iconPath)
-  app.dock?.setIcon(icon)
+  const iconPath = path.join(__dirname, "../../build/icon.png");
+  const icon = nativeImage.createFromPath(iconPath);
+  app.dock?.setIcon(icon);
 
   app.setAboutPanelOptions({
     applicationName: APP_NAME,
-    applicationVersion: '1.0.0',
+    applicationVersion: "1.0.0",
     version: `Electron ${process.versions.electron}`,
-    copyright: '© 2026',
+    copyright: "© 2026",
     iconPath,
-  })
+  });
 
-  buildMenu()
+  buildMenu();
 
   try {
-    await startSidecar()
+    await startSidecar();
   } catch (err) {
-    console.error('Sidecar start failed, continuing without it:', err)
+    console.error("Sidecar start failed, continuing without it:", err);
   }
-  createWindow()
-})
+  createWindow();
+});
 
-app.on('window-all-closed', () => {
-  stopSidecar()
-  app.quit()
-})
+app.on("window-all-closed", () => {
+  stopSidecar();
+  app.quit();
+});
 
-app.on('before-quit', () => {
-  stopSidecar()
-})
+app.on("before-quit", () => {
+  stopSidecar();
+});

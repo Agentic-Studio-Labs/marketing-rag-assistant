@@ -119,9 +119,8 @@ def read_object_bytes(object_path: str) -> bytes:
 
 def materialize_object(object_path: str) -> Path:
     data = read_object_bytes(object_path)
-    suffix = Path(normalize_object_path(object_path)).suffix
-    handle = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-    handle.write(data)
-    handle.flush()
-    handle.close()
-    return Path(handle.name)
+    normalized = Path(normalize_object_path(object_path))
+    name = normalized.name or f"upload{normalized.suffix or '.bin'}"
+    out_path = Path(tempfile.mkdtemp()) / name
+    out_path.write_bytes(data)
+    return out_path
