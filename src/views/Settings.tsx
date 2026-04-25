@@ -1,20 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
-import type { AppSettings, IntegrationState, JobDetail } from "../api/types";
+import type { AppSettings, IntegrationState } from "../api/types";
 
 export default function Settings() {
   const backend = useMemo(() => api.backendInfo(), []);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [integrations, setIntegrations] = useState<IntegrationState[]>([]);
-  const [ingestJob, setIngestJob] = useState<JobDetail | null>(null);
-  const [files, setFiles] = useState<File[]>([]);
   const [apiKey, setApiKey] = useState("");
   const [newFolder, setNewFolder] = useState("");
   const [folders, setFolders] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     api
@@ -32,37 +28,6 @@ export default function Settings() {
         .catch((e) => setError(e.message));
     }
   }, [backend.mode]);
-
-  useEffect(() => {
-    if (
-      !ingestJob ||
-      ingestJob.status === "succeeded" ||
-      ingestJob.status === "failed"
-    ) {
-      return;
-    }
-
-    const interval = window.setInterval(async () => {
-      try {
-        const next = await api.getJob(ingestJob.id);
-        setIngestJob(next);
-        if (next.status === "succeeded") {
-          setMessage(
-            `Ingested ${(next.result as { ingested?: number } | null)?.ingested ?? 0} file(s).`,
-          );
-          setUploading(false);
-        } else if (next.status === "failed") {
-          setError(next.error || "Ingest job failed");
-          setUploading(false);
-        }
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : String(err));
-        setUploading(false);
-      }
-    }, 1500);
-
-    return () => window.clearInterval(interval);
-  }, [ingestJob]);
 
   async function saveApiKey() {
     try {
@@ -108,33 +73,6 @@ export default function Settings() {
     }
   }
 
-  async function uploadAndQueueIngest() {
-    if (files.length === 0) return;
-    setUploading(true);
-    setMessage("");
-    setError("");
-    try {
-      const objectPaths = [];
-      for (const file of files) {
-        objectPaths.push(await api.uploadFile(file));
-      }
-      const job = await api.createIngestJob({
-        object_paths: objectPaths,
-        source_label: "desktop-upload",
-      });
-      setIngestJob(job);
-      if (job.status === "succeeded") {
-        setMessage(
-          `Ingested ${(job.result as { ingested?: number } | null)?.ingested ?? 0} file(s).`,
-        );
-        setUploading(false);
-      }
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-      setUploading(false);
-    }
-  }
-
   if (!settings)
     return (
       <div className="text-center py-8 text-muted-foreground">
@@ -152,7 +90,6 @@ export default function Settings() {
           </p>
         </div>
         {error && <p className="text-red-500 text-sm">{error}</p>}
-        {message && <p className="text-emerald-600 text-sm">{message}</p>}
 
         <section className="border border-border rounded-lg p-5">
           <h2 className="font-semibold mb-3">Workspace</h2>
@@ -218,46 +155,6 @@ export default function Settings() {
               </p>
             )}
           </div>
-        </section>
-
-        <section className="border border-border rounded-lg p-5">
-          <h2 className="font-semibold mb-3">Upload And Ingest</h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            Upload source files into cloud storage, then queue an ingest job
-            that creates cloud-owned content records.
-          </p>
-          <input
-            type="file"
-            multiple
-            accept=".md,.markdown,.txt,.pdf,.docx"
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-            className="block w-full text-sm"
-          />
-          {files.length > 0 && (
-            <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
-              {files.map((file) => (
-                <li key={file.name}>{file.name}</li>
-              ))}
-            </ul>
-          )}
-          <button
-            onClick={() => void uploadAndQueueIngest()}
-            disabled={uploading || files.length === 0}
-            className="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-          >
-            {uploading ? "Uploading..." : "Upload And Queue Ingest"}
-          </button>
-          {ingestJob && (
-            <div className="mt-4 rounded-md border border-border bg-muted/20 p-4 text-sm">
-              <p className="font-medium">Ingest Job</p>
-              <p className="text-muted-foreground mt-1">
-                Status: {ingestJob.status}
-              </p>
-              {ingestJob.error && (
-                <p className="text-red-500 mt-2">{ingestJob.error}</p>
-              )}
-            </div>
-          )}
         </section>
       </div>
     );

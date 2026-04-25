@@ -102,9 +102,9 @@ function AuthenticatedShell() {
             </>
           )}
         </div>
-        <SidebarLink to="/dashboard">Dashboard</SidebarLink>
         <SidebarLink to="/library">Library</SidebarLink>
         <SidebarLink to="/generated">Generated</SidebarLink>
+        <SidebarLink to="/dashboard">Search</SidebarLink>
         <SidebarLink to="/settings">Settings</SidebarLink>
       </nav>
       <div
@@ -132,7 +132,7 @@ function AuthenticatedShell() {
           <Route path="/generated" element={<Generated />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/content/:id" element={<ContentDetail />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/library" replace />} />
         </Routes>
       </main>
     </div>
