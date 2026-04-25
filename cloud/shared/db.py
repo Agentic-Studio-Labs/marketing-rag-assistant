@@ -234,8 +234,14 @@ def ensure_default_workspace(conn: Connection) -> str:
 
 def ensure_default_integrations(conn: Connection) -> None:
     workspace_id = ensure_default_workspace(conn)
+    anthropic_connected = bool(settings.anthropic_api_key)
     defaults = [
-        ("anthropic", settings.anthropic_secret_ref, False, "Pending configuration"),
+        (
+            "anthropic",
+            settings.anthropic_secret_ref,
+            anthropic_connected,
+            "Connected" if anthropic_connected else "Pending configuration",
+        ),
         (
             "gcs",
             "gcs_bucket",
