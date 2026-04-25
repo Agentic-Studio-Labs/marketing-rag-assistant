@@ -54,31 +54,7 @@ variable "tasks_queue_name" {
 variable "manage_cloud_tasks_queue" {
   type        = bool
   default     = true
-  description = "Set false if the queue already exists in GCP and you manage it outside Terraform (avoids 409). Alternatively: terraform import to adopt the existing queue."
-}
-
-variable "cloud_run_api_image" {
-  type        = string
-  default     = ""
-  description = "Container image for cih-api. Empty = us-docker.pkg.dev/PROJECT_ID/cih/cih-api:latest (must exist in Artifact Registry). Use gcr.io/cloudrun/hello only to bootstrap an empty service, then deploy the real image."
-}
-
-variable "cloud_run_worker_image" {
-  type        = string
-  default     = ""
-  description = "Container image for cih-worker. Empty = us-docker.pkg.dev/PROJECT_ID/cih/cih-worker:latest."
-}
-
-variable "tasks_invoker_service_account_email" {
-  type        = string
-  default     = ""
-  description = "Service account email used as Cloud Tasks OIDC identity (must match CIH_CLOUD_TASKS_SERVICE_ACCOUNT_EMAIL)."
-}
-
-variable "grant_worker_invoker_to_tasks_sa" {
-  type        = bool
-  default     = false
-  description = "When true and tasks_invoker_service_account_email is set, grant roles/run.invoker on the worker to that SA only."
+  description = "Set false if the queue already exists in GCP and you manage it outside Terraform (avoids 409). Alternatively: terraform import 'google_cloud_tasks_queue.jobs[0]' to adopt the existing queue."
 }
 
 variable "resend_secret_id" {

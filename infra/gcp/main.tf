@@ -25,17 +25,6 @@ locals {
     ? var.cloud_run_api_service_account_email
     : "${data.google_project.project.number}-compute@developer.gserviceaccount.com"
   )
-
-  cloud_run_api_container_image = (
-    var.cloud_run_api_image != ""
-    ? var.cloud_run_api_image
-    : "us-docker.pkg.dev/${var.project_id}/cih/cih-api:latest"
-  )
-  cloud_run_worker_container_image = (
-    var.cloud_run_worker_image != ""
-    ? var.cloud_run_worker_image
-    : "us-docker.pkg.dev/${var.project_id}/cih/cih-worker:latest"
-  )
 }
 
 resource "google_storage_bucket" "artifacts" {
@@ -67,6 +56,8 @@ resource "google_sql_database_instance" "cloud_sql" {
 }
 
 resource "google_cloud_tasks_queue" "jobs" {
+  count = var.manage_cloud_tasks_queue ? 1 : 0
+
   name     = var.tasks_queue_name
   location = var.region
 }
@@ -93,36 +84,7 @@ resource "google_secret_manager_secret_iam_member" "api_resend_accessor" {
   member    = "serviceAccount:${local.cloud_run_api_sa}"
 }
 
-resource "google_cloud_run_v2_service" "api" {
-  name     = "cih-api"
-  location = var.region
-
-  template {
-    containers {
-      image = local.cloud_run_api_container_image
-    }
-  }
-}
-
-resource "google_cloud_run_v2_service" "worker" {
-  name     = "cih-worker"
-  location = var.region
-
-  template {
-    containers {
-      image = local.cloud_run_worker_container_image
-    }
-  }
-}
-
-# Grant the Cloud Tasks OIDC service account permission to call the worker only
-# (remove any roles/run.invoker binding for allUsers on the worker in Cloud Console if present).
-resource "google_cloud_run_v2_service_iam_member" "worker_invoker_tasks_sa" {
-  count = var.grant_worker_invoker_to_tasks_sa ? 1 : 0
-
-  project  = var.project_id
-  location = google_cloud_run_v2_service.worker.location
-  name     = google_cloud_run_v2_service.worker.name
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${var.tasks_invoker_service_account_email}"
-}
+# Cloud Run services (cih-api-prod, cih-worker-prod) are deployed via
+# `gcloud run deploy` + cloud/cloudbuild.*.yaml, not Terraform. Keeping them out of
+# this module avoids fighting the deploy tool over env vars, secret mounts, CloudSQL
+# connectors, and the tasks-invoker SA. See infra/gcp/README.md.

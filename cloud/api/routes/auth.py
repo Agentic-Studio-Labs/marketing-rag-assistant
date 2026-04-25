@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, EmailStr, field_validator
 
@@ -9,6 +11,8 @@ from shared.auth import (
     normalize_email,
     revoke_session,
 )
+from shared.config import settings as cloud_settings
+from shared.magic_link_mail import send_magic_link_email
 
 logger = logging.getLogger(__name__)
 

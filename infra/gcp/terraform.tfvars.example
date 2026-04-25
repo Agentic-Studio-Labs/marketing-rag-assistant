@@ -5,21 +5,15 @@ project_id = "content-intel-hub-prod"
 region     = "us-central1"
 
 # Optional hardening (see variables.tf):
-# db_tier                      = "db-g1-small"
-# db_public_ipv4_enabled       = true
-# db_deletion_protection       = true
-# grant_worker_invoker_to_tasks_sa       = true
-# tasks_invoker_service_account_email     = "YOUR-TASKS-SA@content-intel-hub-prod.iam.gserviceaccount.com"
+# db_tier                = "db-g1-small"
+# db_public_ipv4_enabled = true
+# db_deletion_protection = true
 
 # Resend magic-link: secret must already exist in Secret Manager (create key + version in Console).
 # Short id is the name after .../secrets/ — e.g. CIH_CLOUD_RESEND_API_KEY
 # resend_secret_id = "CIH_CLOUD_RESEND_API_KEY"
-# If cih-api uses a custom runtime SA, set it (otherwise Terraform uses default compute SA):
+# If cih-api-prod uses a custom runtime SA, set it (otherwise Terraform uses default compute SA):
 # cloud_run_api_service_account_email = "cih-api@content-intel-hub-prod.iam.gserviceaccount.com"
 
 # If Cloud Tasks queue already exists: either import it (see README) or skip Terraform management:
 # manage_cloud_tasks_queue = false
-
-# Cloud Run images must exist before apply, or set placeholders then deploy real images:
-# cloud_run_api_image    = "gcr.io/cloudrun/hello"
-# cloud_run_worker_image = "gcr.io/cloudrun/hello"
